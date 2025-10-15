@@ -32,8 +32,25 @@ export default function JobProgress({ job, onComplete, onError, onReset }: JobPr
   const [elapsedTime, setElapsedTime] = useState(0);
 
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    let pollCount = 0;
+    let isActive = true;
+
+    const getNextPollInterval = () => {
+      // Smart polling: start fast, then slow down
+      if (pollCount < 3) return 500;   // First 3 polls: 0.5s
+      if (pollCount < 10) return 1000;  // Next 7 polls: 1s
+      if (pollCount < 20) return 2000;  // Next 10 polls: 2s
+      return 5000;                      // After that: 5s
+    };
+
     const pollJob = async () => {
+      if (!isActive) return;
+      
       try {
+        pollCount++;
+        console.log(`[JobProgress] Poll #${pollCount} for job ${job.job_id}`);
+        
         const response = await fetch(`http://localhost:8000/jobs/${job.job_id}`);
         
         if (!response.ok) {
@@ -41,10 +58,14 @@ export default function JobProgress({ job, onComplete, onError, onReset }: JobPr
         }
 
         const updatedJob: Job = await response.json();
+        
+        if (!isActive) return; // Check again after async operation
+        
         setCurrentJob(updatedJob);
         setElapsedTime(Date.now() - startTime);
 
         if (updatedJob.state === "completed") {
+          console.log(`[JobProgress] Job completed, fetching tree`);
           // Fetch the repository tree
           const treeResponse = await fetch(`http://localhost:8000/repos/${job.job_id}/tree`);
           
@@ -53,31 +74,54 @@ export default function JobProgress({ job, onComplete, onError, onReset }: JobPr
           }
 
           const treeData = await treeResponse.json();
-          onComplete(treeData.tree);
+          if (isActive) {
+            onComplete(treeData.tree);
+          }
+          return; // Stop polling
         } else if (updatedJob.state === "failed") {
-          onError(updatedJob.message || "Analysis failed");
+          console.log(`[JobProgress] Job failed: ${updatedJob.message}`);
+          if (isActive) {
+            onError(updatedJob.message || "Analysis failed");
+          }
+          return; // Stop polling
+        }
+        
+        // Schedule next poll if job is still running
+        if (isActive && (updatedJob.state === "queued" || updatedJob.state === "running")) {
+          const nextInterval = getNextPollInterval();
+          console.log(`[JobProgress] Scheduling next poll in ${nextInterval}ms`);
+          timeoutId = setTimeout(pollJob, nextInterval);
         }
       } catch (error) {
         console.error("Failed to poll job:", error);
-        onError("Failed to check job status");
+        if (isActive) {
+          onError("Failed to check job status");
+        }
       }
     };
 
-    const interval = setInterval(pollJob, 1000); // Poll every second
+    // Start the first poll immediately
+    pollJob();
 
-    return () => clearInterval(interval);
+    return () => {
+      console.log(`[JobProgress] Cleanup - stopping polling for job ${job.job_id}`);
+      isActive = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, [job.job_id, onComplete, onError, startTime]);
 
   const getStateColor = (state: string) => {
     switch (state) {
       case "running":
-        return "text-blue-600 dark:text-blue-400";
+        return "text-gh-accent";
       case "completed":
-        return "text-green-600 dark:text-green-400";
+        return "text-gh-success-emphasis";
       case "failed":
-        return "text-red-600 dark:text-red-400";
+        return "text-gh-danger-emphasis";
       default:
-        return "text-gray-600 dark:text-gray-400";
+        return "text-gh-text-secondary";
     }
   };
 
@@ -120,113 +164,122 @@ export default function JobProgress({ job, onComplete, onError, onReset }: JobPr
 
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-foreground">
-            Analyzing Repository
-          </h2>
-          <button
-            onClick={onReset}
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+      <div className="gh-card">
+        <div className="gh-card-header">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center w-8 h-8 bg-gh-accent rounded-full">
+                <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              </div>
+              <h2 className="text-lg font-semibold text-gh-text">
+                Analyzing Repository
+              </h2>
+            </div>
+            <button
+              onClick={onReset}
+              className="text-gh-text-secondary hover:text-gh-text transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
+        <div className="gh-card-body">
 
-        <div className="space-y-6">
-          {/* Overall Progress */}
-          <div>
-            <div className="flex justify-between items-center mb-3">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Overall Progress
-              </span>
-              <div className="flex items-center space-x-3">
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                  {Math.round(currentJob.progress * 100)}%
+          <div className="space-y-6">
+            {/* Overall Progress */}
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-sm font-medium text-gh-text">
+                  Progress
                 </span>
-                <span className="text-xs text-gray-400 dark:text-gray-500">
-                  {formatElapsedTime(elapsedTime)}
-                </span>
-              </div>
-            </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-              <div 
-                className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-500" 
-                style={{ width: `${currentJob.progress * 100}%` }}
-              ></div>
-            </div>
-          </div>
-
-          {/* Current Stage */}
-          <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center justify-center w-8 h-8 bg-blue-500 text-white rounded-full">
-                {currentJob.state === "running" ? (
-                  <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                ) : (
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  {getCurrentStage()}
-                </p>
-                <p className={`text-xs capitalize ${getStateColor(currentJob.state)}`}>
-                  Status: {currentJob.state}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Progress Steps */}
-          <div>
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-              Analysis Steps
-            </h4>
-            <div className="space-y-2">
-              {getProgressSteps().map((step, index) => (
-                <div key={step.name} className="flex items-center space-x-3">
-                  <div className={`flex items-center justify-center w-6 h-6 rounded-full ${
-                    step.isActive 
-                      ? 'bg-green-500 text-white' 
-                      : step.isCurrent
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
-                  }`}>
-                    {step.isActive && !step.isCurrent ? (
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    ) : step.isCurrent ? (
-                      <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                    ) : (
-                      <span className="text-xs font-medium">{index + 1}</span>
-                    )}
-                  </div>
-                  <span className={`text-sm ${
-                    step.isActive 
-                      ? 'text-gray-900 dark:text-gray-100 font-medium' 
-                      : 'text-gray-500 dark:text-gray-400'
-                  }`}>
-                    {step.name}
+                <div className="flex items-center space-x-3">
+                  <span className="text-sm text-gh-text-secondary">
+                    {Math.round(currentJob.progress * 100)}%
+                  </span>
+                  <span className="text-xs text-gh-text-tertiary">
+                    {formatElapsedTime(elapsedTime)}
                   </span>
                 </div>
-              ))}
+              </div>
+              <div className="w-full bg-gh-canvas-subtle rounded-full h-2">
+                <div 
+                  className="bg-gh-accent h-2 rounded-full transition-all duration-500" 
+                  style={{ width: `${currentJob.progress * 100}%` }}
+                ></div>
+              </div>
             </div>
-          </div>
 
-          {currentJob.message && (
-            <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 rounded p-3">
-              <span className="font-medium">Details:</span> {currentJob.message}
+            {/* Current Stage */}
+            <div className="flex items-center justify-between p-3 bg-gh-accent-subtle rounded-md border border-gh-border">
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center justify-center w-6 h-6 bg-gh-accent text-white rounded-full">
+                  {currentJob.state === "running" ? (
+                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                  ) : (
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gh-text">
+                    {getCurrentStage()}
+                  </p>
+                  <p className={`text-xs capitalize ${getStateColor(currentJob.state)}`}>
+                    {currentJob.state}
+                  </p>
+                </div>
+              </div>
             </div>
-          )}
 
-          <div className="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
-            Job ID: {currentJob.job_id}
+            {/* Progress Steps */}
+            <div>
+              <h4 className="text-sm font-medium text-gh-text mb-3">
+                Analysis Steps
+              </h4>
+              <div className="space-y-2">
+                {getProgressSteps().map((step, index) => (
+                  <div key={step.name} className="flex items-center space-x-3">
+                    <div className={`flex items-center justify-center w-6 h-6 rounded-full ${
+                      step.isActive 
+                        ? 'bg-gh-success-emphasis text-white' 
+                        : step.isCurrent
+                          ? 'bg-gh-accent text-white'
+                          : 'bg-gh-canvas-subtle text-gh-text-tertiary'
+                    }`}>
+                      {step.isActive && !step.isCurrent ? (
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      ) : step.isCurrent ? (
+                        <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                      ) : (
+                        <span className="text-xs font-medium">{index + 1}</span>
+                      )}
+                    </div>
+                    <span className={`text-sm ${
+                      step.isActive 
+                        ? 'text-gh-text font-medium' 
+                        : 'text-gh-text-secondary'
+                    }`}>
+                      {step.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {currentJob.message && (
+              <div className="text-sm text-gh-text-secondary bg-gh-canvas-subtle rounded-md p-3">
+                <span className="font-medium">Details:</span> {currentJob.message}
+              </div>
+            )}
+
+            <div className="text-xs text-gh-text-tertiary pt-2 border-t border-gh-border">
+              Job ID: {currentJob.job_id}
+            </div>
           </div>
         </div>
       </div>

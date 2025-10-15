@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 
 interface Message {
   id: string;
@@ -61,7 +60,7 @@ export default function BottomChat({ jobId, onAskQuestion }: BottomChatProps) {
         timestamp: new Date()
       };
       setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
+    } catch {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
@@ -129,7 +128,7 @@ export default function BottomChat({ jobId, onAskQuestion }: BottomChatProps) {
               <div className="text-center">
                 <div className="text-2xl mb-2">🤖</div>
                 <p className="text-sm">Ask me anything about this repository!</p>
-                <p className="text-xs mt-1">Try: "What does this project do?" or "How is the code organized?"</p>
+                <p className="text-xs mt-1">Try: &quot;What does this project do?&quot; or &quot;How is the code organized?&quot;</p>
               </div>
             </div>
           ) : (
@@ -150,14 +149,18 @@ export default function BottomChat({ jobId, onAskQuestion }: BottomChatProps) {
                       <div className="prose prose-sm max-w-none">
                         <ReactMarkdown
                           components={{
-                            code({node, inline, className, children, ...props}) {
+                            code(props) {
+                              const {inline, className, children} = props as {
+                                inline?: boolean;
+                                className?: string;
+                                children?: React.ReactNode;
+                              };
                               const match = /language-(\\w+)/.exec(className || '');
                               return !inline && match ? (
                                 <SyntaxHighlighter
-                                  style={oneDark}
                                   language={match[1]}
                                   PreTag="div"
-                                  {...props}
+                                  className="bg-gray-900 text-gray-100 p-3 rounded text-sm"
                                 >
                                   {String(children).replace(/\\n$/, '')}
                                 </SyntaxHighlighter>

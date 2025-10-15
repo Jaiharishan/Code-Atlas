@@ -29,8 +29,6 @@ export default function RepoExplorer({ tree, jobId, onReset }: RepoExplorerProps
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set([tree.path]));
   const [activeTab, setActiveTab] = useState<Tab>('tree');
-  const [qaAnswer, setQaAnswer] = useState<string | null>(null);
-  const [qaQuestion, setQaQuestion] = useState<string>("");
 
   const handleAskQuestion = async (question: string): Promise<string> => {
     try {

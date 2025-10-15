@@ -31,7 +31,7 @@ export default function RepoInput({ onAnalysisStart }: RepoInputProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    let requestBody: any = {};
+    let requestBody: Record<string, string> = {};
     
     if (inputType === 'local') {
       if (!path.trim()) {

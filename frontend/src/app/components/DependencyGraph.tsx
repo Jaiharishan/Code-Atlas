@@ -61,7 +61,7 @@ export default function DependencyGraph({ jobId }: DependencyGraphProps) {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">Loading dependency graph...</p>
+      <p className="text-gray-500 dark:text-gray-400 text-center">Dependency graph isn&apos;t implemented yet.</p>
         </div>
       </div>
     );
@@ -93,7 +93,7 @@ export default function DependencyGraph({ jobId }: DependencyGraphProps) {
           </svg>
           <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">No dependencies found</h3>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            This repository doesn't seem to have detectable dependencies yet
+            This repository doesn&apos;t seem to have detectable dependencies yet
           </p>
         </div>
       </div>
@@ -109,7 +109,7 @@ export default function DependencyGraph({ jobId }: DependencyGraphProps) {
         
         {/* Simple list view of dependencies for now */}
         <div className="space-y-2 max-h-48 overflow-y-auto">
-          {graphData.nodes.map((node, index) => (
+        {graphData.nodes.map((node) => (
             <div key={node.id} className="flex items-center space-x-3 p-2 bg-gray-50 dark:bg-gray-800 rounded">
               <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
               <div className="flex-1">
