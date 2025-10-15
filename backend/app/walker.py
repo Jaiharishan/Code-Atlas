@@ -57,68 +57,102 @@ def walk_dir(root: str) -> Node:
 
 
 def walk_dir_enhanced(root: str, enhanced_summarizer, manager: JobManager, job_id: str) -> Node:
-    """Enhanced directory walker with LLM-powered summaries."""
+    """Enhanced directory walker with efficient batch LLM processing."""
     
-    def build_node_enhanced(path: str, depth: int = 0) -> Node:
+    # First pass: collect all files for batch processing
+    manager.update_progress(job_id, 0.4, "scanning", "Collecting files for analysis")
+    all_files = []
+    file_nodes = {}  # Store file nodes temporarily
+    
+    def collect_files(path: str) -> Node:
         name = os.path.basename(path) or os.path.basename(os.path.dirname(path))
         
         if os.path.isdir(path):
-            children: List[Node] = []
-            child_summaries: List[str] = []
-            
-            # Update progress based on depth
-            if depth == 0:
-                manager.update_progress(job_id, 0.4, "scanning", f"Analyzing directory: {name}")
-            
+            children = []
             for entry in sorted(os.listdir(path)):
                 child_path = os.path.join(path, entry)
                 if os.path.isdir(child_path) and should_skip_dir(entry):
                     continue
-                
-                child_node = build_node_enhanced(child_path, depth + 1)
+                child_node = collect_files(child_path)
                 children.append(child_node)
-                if child_node.get('summary'):
-                    child_summaries.append(child_node['summary'])
-            
-            # Generate enhanced directory summary
-            summary = enhanced_summarizer.summarize_directory(path, child_summaries)
             
             return {
                 "path": path,
                 "name": name,
-                "type": "directory",  # Use consistent naming
+                "type": "directory",
                 "language": None,
                 "size": None,
-                "summary": summary,
+                "summary": None,  # Will be filled later
                 "children": children,
             }
         else:
-            # File processing
+            # File processing - collect for batch
             lang = detect_language(path)
             size = os.path.getsize(path)
             
-            # Read content for analysis
             content = None
             if size <= MAX_FILE_BYTES and not is_binary_file(path):
                 content = read_text_prefix(path, MAX_FILE_BYTES)
             
-            # Generate enhanced file summary
-            if content:
-                summary = enhanced_summarizer.summarize_file(path, content)
-            else:
-                summary = naive_summary(path, content)
+            file_data = {
+                "path": path,
+                "content": content or "",
+                "language": lang,
+                "size": size
+            }
+            all_files.append(file_data)
             
-            return {
+            # Create node without summary (will be filled later)
+            node = {
                 "path": path,
                 "name": name,
                 "type": "file",
                 "language": lang,
                 "size": int(size),
-                "summary": summary,
+                "summary": None,  # Will be filled by batch processing
                 "children": None,
             }
+            file_nodes[path] = node
+            return node
     
-    return build_node_enhanced(root)
+    # Collect all files first
+    tree = collect_files(root)
+    
+    # Second pass: batch process file summaries
+    if all_files:
+        manager.update_progress(job_id, 0.6, "analyzing", f"Generating summaries for {len(all_files)} files")
+        
+        # Use batch processing to minimize LLM calls
+        batch_summaries = enhanced_summarizer.batch_summarize_files(all_files)
+        
+        # Apply summaries to file nodes
+        for file_path, summary in batch_summaries.items():
+            if file_path in file_nodes:
+                file_nodes[file_path]['summary'] = summary
+        
+        # Fill in any missing summaries with naive fallback
+        for file_data in all_files:
+            file_path = file_data['path']
+            if file_path in file_nodes and file_nodes[file_path]['summary'] is None:
+                file_nodes[file_path]['summary'] = naive_summary(file_path, file_data.get('content'))
+    
+    # Third pass: generate directory summaries
+    def finalize_directory_summaries(node: Node) -> None:
+        if node['type'] == 'directory':
+            child_summaries = []
+            if node.get('children'):
+                for child in node['children']:
+                    finalize_directory_summaries(child)
+                    if child.get('summary'):
+                        child_summaries.append(child['summary'])
+            
+            # Generate directory summary
+            node['summary'] = enhanced_summarizer.summarize_directory(node['path'], child_summaries)
+    
+    manager.update_progress(job_id, 0.8, "finalizing", "Generating directory summaries")
+    finalize_directory_summaries(tree)
+    
+    return tree
 
 
 def analyze_repository(local_path: str, job_id: str, manager: JobManager) -> None:

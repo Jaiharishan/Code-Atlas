@@ -152,11 +152,11 @@ export default function RepoExplorer({ tree, jobId, onReset }: RepoExplorerProps
           <div className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 rounded-lg">
             <div className="p-4">
               {activeTab === 'tree' ? (
-                <div className="max-h-96 overflow-y-auto">
+                <div className="max-h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-2">
                   <TreeNode
                     node={tree}
                     level={0}
-                    isExpanded={expandedNodes.has(tree.path)}
+                    expandedNodes={expandedNodes}
                     onToggleExpanded={toggleExpanded}
                     onNodeSelect={setSelectedNode}
                     selectedNode={selectedNode}
@@ -172,56 +172,120 @@ export default function RepoExplorer({ tree, jobId, onReset }: RepoExplorerProps
 
         {/* Details Panel */}
         <div className="lg:col-span-1">
-          <div className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 rounded-lg">
+          <div className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 rounded-lg sticky top-4">
             <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-              <h3 className="text-lg font-semibold text-foreground">Details</h3>
+              <h3 className="text-lg font-semibold text-foreground flex items-center">
+                <span className="mr-2">📋</span>
+                Details
+              </h3>
             </div>
-            <div className="p-4">
+            <div className="p-4 max-h-[500px] overflow-y-auto">
               {selectedNode ? (
-                <div className="space-y-3">
-                  <div>
-                    <h4 className="font-medium text-foreground">{selectedNode.name}</h4>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 break-all">
+                <div className="space-y-4">
+                  {/* Header */}
+                  <div className="pb-3 border-b border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <span className="text-xl">
+                        {selectedNode.type === 'directory' ? (selectedNode.children?.length ? '📂' : '📁') : getFileIconForDetails(selectedNode)}
+                      </span>
+                      <h4 className="font-semibold text-foreground">{selectedNode.name}</h4>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 font-mono break-all bg-gray-100 dark:bg-gray-800 p-2 rounded">
                       {selectedNode.path}
                     </p>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <span className="font-medium text-gray-700 dark:text-gray-300">Type:</span>
-                      <p className="text-gray-600 dark:text-gray-400 capitalize">{selectedNode.type}</p>
+                  {/* Metadata */}
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Type:</span>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          selectedNode.type === 'directory' 
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' 
+                            : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        }`}>
+                          {selectedNode.type === 'directory' ? '📁 Directory' : '📄 File'}
+                        </span>
+                      </div>
+                      
+                      {selectedNode.language && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Language:</span>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${getLanguageBadgeColor(selectedNode.language)}`}>
+                            {selectedNode.language.toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {selectedNode.size !== undefined && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Size:</span>
+                          <span className="text-sm text-gray-600 dark:text-gray-400">
+                            {formatFileSize(selectedNode.size)}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {selectedNode.type === 'directory' && selectedNode.children && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Items:</span>
+                          <span className="text-sm text-gray-600 dark:text-gray-400">
+                            {selectedNode.children.length} items
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    {selectedNode.language && (
-                      <div>
-                        <span className="font-medium text-gray-700 dark:text-gray-300">Language:</span>
-                        <p className="text-gray-600 dark:text-gray-400">{selectedNode.language}</p>
-                      </div>
-                    )}
-                    {selectedNode.size && (
-                      <div>
-                        <span className="font-medium text-gray-700 dark:text-gray-300">Size:</span>
-                        <p className="text-gray-600 dark:text-gray-400">
-                          {(selectedNode.size / 1024).toFixed(1)} KB
-                        </p>
-                      </div>
-                    )}
                   </div>
 
+                  {/* Summary */}
                   {selectedNode.summary && (
-                    <div>
-                      <span className="font-medium text-gray-700 dark:text-gray-300 block mb-2">
-                        Summary:
+                    <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
+                        📝 Summary:
                       </span>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 p-3 rounded">
-                        {selectedNode.summary}
-                      </p>
+                      <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                          {selectedNode.summary}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Children preview for directories */}
+                  {selectedNode.type === 'directory' && selectedNode.children && selectedNode.children.length > 0 && (
+                    <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
+                        🗂️ Contains:
+                      </span>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {selectedNode.children.slice(0, 10).map((child) => (
+                          <div key={child.path} className="flex items-center space-x-2 text-xs text-gray-600 dark:text-gray-400">
+                            <span>{child.type === 'directory' ? '📁' : getFileIconForDetails(child)}</span>
+                            <span className="truncate">{child.name}</span>
+                            {child.language && (
+                              <span className="px-1 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-xs">
+                                {child.language}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                        {selectedNode.children.length > 10 && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+                            ... and {selectedNode.children.length - 10} more items
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
               ) : (
-                <p className="text-gray-500 dark:text-gray-400 text-sm">
-                  Select a file or directory to view details
-                </p>
+                <div className="text-center py-8">
+                  <div className="text-4xl mb-2">📁</div>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">
+                    Select a file or directory to view details
+                  </p>
+                </div>
               )}
             </div>
           </div>
@@ -229,4 +293,97 @@ export default function RepoExplorer({ tree, jobId, onReset }: RepoExplorerProps
       </div>
     </div>
   );
+}
+
+// Helper functions
+function getFileIconForDetails(node: RepoTree): string {
+  if (node.type === 'directory') return '📁';
+  
+  const extension = node.name.split('.').pop()?.toLowerCase();
+  
+  switch (node.language) {
+    case "javascript":
+      return "🟨";
+    case "typescript":
+    case "tsx":
+      return "🔷";
+    case "python":
+      return "🐍";
+    case "java":
+      return "☕";
+    case "go":
+      return "🐹";
+    case "rust":
+      return "🦀";
+    case "html":
+      return "🌐";
+    case "css":
+      return "🎨";
+    case "json":
+      return "📋";
+    case "markdown":
+      return "📝";
+    case "yaml":
+    case "yml":
+      return "⚙️";
+    default:
+      switch (extension) {
+        case "md":
+          return "📝";
+        case "json":
+          return "📋";
+        case "yml":
+        case "yaml":
+          return "⚙️";
+        case "txt":
+          return "📄";
+        case "pdf":
+          return "📕";
+        case "png":
+        case "jpg":
+        case "jpeg":
+        case "gif":
+        case "svg":
+          return "🖼️";
+        case "zip":
+        case "tar":
+        case "gz":
+          return "📦";
+        case "env":
+          return "🔐";
+        case "gitignore":
+          return "🚫";
+        case "lock":
+          return "🔒";
+        case "config":
+        case "conf":
+          return "⚙️";
+        default:
+          return "📄";
+      }
+  }
+}
+
+function getLanguageBadgeColor(language: string): string {
+  const colors: { [key: string]: string } = {
+    typescript: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+    javascript: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+    python: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+    java: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+    go: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200',
+    rust: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+    html: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200',
+    css: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+    json: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
+    yaml: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
+    tsx: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+  };
+  
+  return colors[language.toLowerCase()] || 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200';
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

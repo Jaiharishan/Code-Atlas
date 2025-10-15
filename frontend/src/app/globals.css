@@ -24,3 +24,32 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Line clamp utilities */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Tree line styling */
+.tree-connection {
+  position: relative;
+}
+
+.tree-connection::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--tw-border-opacity, 1) rgba(229, 231, 235, var(--tw-border-opacity));
+}
+
+@media (prefers-color-scheme: dark) {
+  .tree-connection::before {
+    background: var(--tw-border-opacity, 1) rgba(75, 85, 99, var(--tw-border-opacity));
+  }
+}

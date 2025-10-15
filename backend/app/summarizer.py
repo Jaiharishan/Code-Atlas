@@ -87,22 +87,33 @@ class EnhancedSummarizer:
             self._repo_context = None
     
     def summarize_file(self, file_path: str, content: str) -> str:
-        """Generate intelligent summary for a file using LLM or fallback."""
+        """Generate intelligent summary for a file using fallback (batch processing preferred)."""
+        # Always use naive summary for individual files to avoid excessive LLM calls
+        # Use batch_summarize_files for efficient LLM processing
+        return naive_summary(file_path, content)
+    
+    def batch_summarize_files(self, files_data: List[Dict[str, str]]) -> Dict[str, str]:
+        """Generate summaries for multiple files efficiently."""
         if not self.llm_available or not self._repo_context:
-            return naive_summary(file_path, content)
+            # Use fallback for all files
+            return {f['path']: naive_summary(f['path'], f.get('content', '')) for f in files_data}
         
         try:
-            # Use LLM for intelligent summary
-            summary = self.llm_service.generate_file_summary(
-                file_path, 
-                content, 
-                self._repo_context
-            )
-            return summary
+            # Use LLM batch processing to reduce HTTP requests
+            summaries = self.llm_service.generate_batch_summaries(files_data, self._repo_context)
+            
+            # Fill in any missing with naive summaries
+            for file_data in files_data:
+                file_path = file_data['path']
+                if file_path not in summaries:
+                    summaries[file_path] = naive_summary(file_path, file_data.get('content', ''))
+            
+            return summaries
             
         except Exception as e:
-            print(f"Warning: LLM summary failed for {file_path}: {e}")
-            return naive_summary(file_path, content)
+            print(f"Warning: Batch LLM summary failed: {e}")
+            # Fallback to naive summaries for all files
+            return {f['path']: naive_summary(f['path'], f.get('content', '')) for f in files_data}
     
     def summarize_directory(self, dir_path: str, child_summaries: List[str]) -> str:
         """Generate summary for a directory based on its children."""

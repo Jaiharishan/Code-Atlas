@@ -1,9 +1,9 @@
 import os
 import json
 import time
+import requests
 from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
-import google.generativeai as genai
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -11,29 +11,56 @@ load_dotenv()
 
 
 class LLMService:
-    """Service for LLM-powered repository analysis using Google Gemini."""
+    """Service for LLM-powered repository analysis using Ollama."""
     
     def __init__(self):
-        """Initialize the LLM service with Google Gemini."""
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "GOOGLE_API_KEY environment variable is required. "
-                "Get your API key from https://makersuite.google.com/app/apikey"
+        """Initialize the LLM service with Ollama."""
+        self.base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+        self.model_name = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+        self.timeout = int(os.getenv("OLLAMA_TIMEOUT", "60"))
+        
+        # Test connection to Ollama
+        try:
+            response = requests.get(f"{self.base_url}/api/tags", timeout=5)
+            if response.status_code != 200:
+                raise ConnectionError(f"Cannot connect to Ollama at {self.base_url}")
+        except requests.RequestException as e:
+            print(f"Warning: Cannot connect to Ollama at {self.base_url}. Error: {e}")
+            print("Make sure Ollama is running with: ollama serve")
+            # Don't raise an exception here to allow fallback behavior
+    
+    def _call_ollama(self, prompt: str, system_prompt: str = None) -> str:
+        """Make a request to Ollama API."""
+        try:
+            payload = {
+                "model": self.model_name,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.3,
+                    "top_p": 0.8,
+                    "num_predict": 4096,
+                }
+            }
+            
+            if system_prompt:
+                payload["system"] = system_prompt
+            
+            response = requests.post(
+                f"{self.base_url}/api/generate",
+                json=payload,
+                timeout=self.timeout
             )
-        
-        genai.configure(api_key=api_key)
-        
-        # Use Gemini Pro model
-        self.model = genai.GenerativeModel('gemini-pro')
-        
-        # Configuration for generation
-        self.generation_config = genai.types.GenerationConfig(
-            temperature=0.3,  # Lower temperature for more consistent analysis
-            top_p=0.8,
-            top_k=40,
-            max_output_tokens=4096,
-        )
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result.get("response", "")
+            else:
+                print(f"Ollama API error: {response.status_code} - {response.text}")
+                return ""
+        except requests.RequestException as e:
+            print(f"Error calling Ollama: {e}")
+            return ""
     
     def analyze_repository_structure(self, repo_path: str) -> Dict[str, Any]:
         """
@@ -52,13 +79,13 @@ class LLMService:
         prompt = self._build_analysis_prompt(context)
         
         try:
-            response = self.model.generate_content(
+            response = self._call_ollama(
                 prompt,
-                generation_config=self.generation_config
+                system_prompt="You are a code analysis expert. Provide detailed, accurate analysis of repository structure and code."
             )
             
             # Parse the structured response
-            analysis = self._parse_analysis_response(response.text)
+            analysis = self._parse_analysis_response(response)
             
             return {
                 "success": True,
@@ -76,41 +103,103 @@ class LLMService:
     
     def generate_file_summary(self, file_path: str, file_content: str, repo_context: Dict[str, Any]) -> str:
         """Generate intelligent summary for a specific file."""
+        # For now, use fallback to avoid per-file LLM calls
+        # This dramatically reduces the number of HTTP requests
+        return self._generate_fallback_summary(file_path)
+    
+    def generate_batch_summaries(self, files_data: List[Dict[str, str]], repo_context: Dict[str, Any]) -> Dict[str, str]:
+        """Generate summaries for multiple files in a single request."""
+        if not files_data or len(files_data) == 0:
+            return {}
+            
+        # Limit batch size to avoid overwhelming the LLM
+        batch_size = 10
+        all_summaries = {}
+        
+        for i in range(0, len(files_data), batch_size):
+            batch = files_data[i:i + batch_size]
+            batch_summaries = self._process_file_batch(batch, repo_context)
+            all_summaries.update(batch_summaries)
+            
+        return all_summaries
+    
+    def _process_file_batch(self, files_batch: List[Dict[str, str]], repo_context: Dict[str, Any]) -> Dict[str, str]:
+        """Process a batch of files and return their summaries."""
+        files_info = []
+        for file_data in files_batch:
+            file_path = file_data['path']
+            content = file_data.get('content', '')[:1000]  # Limit content length
+            files_info.append(f"File: {file_path}\nContent: {content[:500]}...\n")
+        
         prompt = f"""
-Analyze this file in the context of the repository and provide a concise, intelligent summary.
+Analyze these files in the context of the repository and provide concise summaries for each.
 
 Repository Context:
 - Main technologies: {', '.join(repo_context.get('languages', []))}
 - Repository type: {repo_context.get('type', 'Unknown')}
-- Key directories: {', '.join(repo_context.get('directories', []))}
 
-File: {file_path}
-Content (first 2000 chars):
-```
-{file_content[:2000]}
-```
+Files to analyze:
+{chr(10).join(files_info)}
 
-Provide a 1-2 sentence summary that explains:
-1. What this file does
-2. Its role in the project
-3. Key functionality (if applicable)
+For each file, provide a 1-sentence summary explaining what it does and its role.
+Format your response as:
+FILE: path/to/file.ext
+SUMMARY: Brief summary here
 
-Summary:"""
+FILE: path/to/next.ext
+SUMMARY: Brief summary here
+"""
 
         try:
-            response = self.model.generate_content(prompt)
-            return response.text.strip()
-        except Exception as e:
-            # Fallback to simple summary
-            filename = os.path.basename(file_path)
-            if 'test' in filename.lower():
-                return f"Test file for {filename.replace('test_', '').replace('.test', '')}"
-            elif 'config' in filename.lower():
-                return f"Configuration file for the project"
-            elif filename == 'README.md':
-                return "Project documentation and setup instructions"
+            response = self._call_ollama(
+                prompt,
+                system_prompt="You are a code analysis assistant. Provide concise, accurate summaries of code files."
+            )
+            
+            if response:
+                return self._parse_batch_summaries(response, files_batch)
             else:
-                return f"Source file implementing core functionality"
+                # Fallback to individual summaries
+                return {f['path']: self._generate_fallback_summary(f['path']) for f in files_batch}
+                
+        except Exception as e:
+            print(f"Batch summary failed: {e}")
+            return {f['path']: self._generate_fallback_summary(f['path']) for f in files_batch}
+    
+    def _parse_batch_summaries(self, response: str, files_batch: List[Dict[str, str]]) -> Dict[str, str]:
+        """Parse batch summary response."""
+        summaries = {}
+        lines = response.split('\n')
+        current_file = None
+        
+        for line in lines:
+            line = line.strip()
+            if line.startswith('FILE:'):
+                current_file = line.replace('FILE:', '').strip()
+            elif line.startswith('SUMMARY:') and current_file:
+                summary = line.replace('SUMMARY:', '').strip()
+                summaries[current_file] = summary
+                current_file = None
+        
+        # Fill in any missing summaries with fallbacks
+        for file_data in files_batch:
+            file_path = file_data['path']
+            if file_path not in summaries:
+                summaries[file_path] = self._generate_fallback_summary(file_path)
+        
+        return summaries
+    
+    def _generate_fallback_summary(self, file_path: str) -> str:
+        """Generate a fallback summary when LLM is unavailable."""
+        filename = os.path.basename(file_path)
+        if 'test' in filename.lower():
+            return f"Test file for {filename.replace('test_', '').replace('.test', '')}"
+        elif 'config' in filename.lower():
+            return f"Configuration file for the project"
+        elif filename == 'README.md':
+            return "Project documentation and setup instructions"
+        else:
+            return f"Source file implementing core functionality"
     
     def generate_dependency_graph(self, repo_path: str, file_contents: Dict[str, str]) -> Dict[str, Any]:
         """Generate dependency graph using LLM analysis."""
@@ -143,8 +232,15 @@ Generate a JSON response with this exact structure:
 Focus on actual code dependencies, imports, and function calls. Be precise and only include real relationships you can identify from the code."""
 
         try:
-            response = self.model.generate_content(prompt)
-            return json.loads(response.text.strip())
+            response = self._call_ollama(
+                prompt,
+                system_prompt="You are a code dependency analyzer. Generate accurate JSON dependency graphs."
+            )
+            
+            if response:
+                return json.loads(response.strip())
+            else:
+                raise Exception("No response from Ollama")
         except Exception as e:
             # Return basic fallback graph
             return {
@@ -184,15 +280,21 @@ Response format:
 Answer:"""
 
         try:
-            response = self.model.generate_content(prompt)
+            response = self._call_ollama(
+                prompt,
+                system_prompt="You are a helpful code analysis assistant. Answer questions about repositories accurately and provide helpful guidance."
+            )
             
-            return {
-                "question": question,
-                "answer": response.text.strip(),
-                "relevant_files": self._extract_relevant_files(response.text, repo_context),
-                "confidence": self._estimate_confidence(response.text),
-                "suggestions": self._generate_exploration_suggestions(question, repo_context)
-            }
+            if response:
+                return {
+                    "question": question,
+                    "answer": response.strip(),
+                    "relevant_files": self._extract_relevant_files(response, repo_context),
+                    "confidence": self._estimate_confidence(response),
+                    "suggestions": self._generate_exploration_suggestions(question, repo_context)
+                }
+            else:
+                raise Exception("No response from Ollama")
             
         except Exception as e:
             return {
