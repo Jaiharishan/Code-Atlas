@@ -1,5 +1,6 @@
 import threading
 import uuid
+import time
 from typing import Dict, Optional, Any
 
 class Job:
@@ -10,6 +11,9 @@ class Job:
         self.progress = 0.0
         self.message = "queued"
         self.tree = None
+        self.stage = "initializing"
+        self.created_at = time.time()
+        self.temp_path = None  # For GitHub repos and uploads
         self._lock = threading.Lock()
 
 class JobManager:
@@ -23,7 +27,7 @@ class JobManager:
             self._jobs[job.id] = job
         return job.id
 
-    def update(self, job_id: str, *, state: Optional[str] = None, progress: Optional[float] = None, message: Optional[str] = None, tree: Optional[Any] = None) -> None:
+    def update(self, job_id: str, *, state: Optional[str] = None, progress: Optional[float] = None, message: Optional[str] = None, tree: Optional[Any] = None, stage: Optional[str] = None) -> None:
         job = self._jobs.get(job_id)
         if not job:
             return
@@ -36,6 +40,19 @@ class JobManager:
                 job.message = message
             if tree is not None:
                 job.tree = tree
+            if stage is not None:
+                job.stage = stage
+                
+    def update_progress(self, job_id: str, progress: float, stage: str, message: str) -> None:
+        """Convenience method to update progress with stage and message."""
+        self.update(job_id, progress=progress, stage=stage, message=message, state="running")
+    
+    def set_temp_path(self, job_id: str, temp_path: str) -> None:
+        """Set temporary path for cleanup later."""
+        job = self._jobs.get(job_id)
+        if job:
+            with job._lock:
+                job.temp_path = temp_path
 
     def get_status(self, job_id: str):
         job = self._jobs.get(job_id)
@@ -53,4 +70,25 @@ class JobManager:
         if not job:
             return None
         return job.tree
+    
+    def get_job(self, job_id: str) -> Optional['Job']:
+        """Get the full job object."""
+        return self._jobs.get(job_id)
+    
+    def cleanup_job(self, job_id: str) -> None:
+        """Clean up temporary files and remove job."""
+        job = self._jobs.get(job_id)
+        if job and job.temp_path:
+            try:
+                import shutil
+                import os
+                if os.path.exists(job.temp_path):
+                    shutil.rmtree(job.temp_path)
+            except Exception as e:
+                print(f"Warning: Failed to cleanup temp path {job.temp_path}: {e}")
+        
+        # Remove job from manager
+        with self._lock:
+            if job_id in self._jobs:
+                del self._jobs[job_id]
 
