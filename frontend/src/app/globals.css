@@ -1,31 +1,194 @@
 @import "tailwindcss";
 
+/* GitHub-inspired Design System */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Light theme colors (GitHub-like) */
+  --gh-bg-canvas: #ffffff;
+  --gh-bg-canvas-inset: #f6f8fa;
+  --gh-bg-canvas-subtle: #f6f8fa;
+  --gh-border-default: #d0d7de;
+  --gh-border-muted: #d8dee4;
+  --gh-text-primary: #1f2328;
+  --gh-text-secondary: #656d76;
+  --gh-text-tertiary: #8b949e;
+  --gh-accent-emphasis: #0969da;
+  --gh-accent-subtle: #ddf4ff;
+  --gh-success-emphasis: #1a7f37;
+  --gh-danger-emphasis: #d1242f;
+  --gh-warning-emphasis: #9a6700;
+  --gh-neutral-emphasis: #656d76;
+  --gh-neutral-subtle: #afb8c1;
+  --gh-shadow-small: 0 1px 3px rgba(16, 22, 26, 0.1);
+  --gh-shadow-medium: 0 3px 6px rgba(16, 22, 26, 0.15);
+  --gh-shadow-large: 0 8px 24px rgba(16, 22, 26, 0.2);
+  
+  /* Typography */
+  --gh-font-size-small: 12px;
+  --gh-font-size-normal: 14px;
+  --gh-font-size-medium: 16px;
+  --gh-font-size-large: 20px;
+  --gh-font-size-xl: 24px;
+  
+  /* Spacing */
+  --gh-space-1: 4px;
+  --gh-space-2: 8px;
+  --gh-space-3: 12px;
+  --gh-space-4: 16px;
+  --gh-space-6: 24px;
+  --gh-space-8: 32px;
+  
+  /* Border radius */
+  --gh-border-radius: 6px;
+  --gh-border-radius-small: 3px;
+  --gh-border-radius-large: 12px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Dark theme colors (GitHub dark) */
+    --gh-bg-canvas: #0d1117;
+    --gh-bg-canvas-inset: #010409;
+    --gh-bg-canvas-subtle: #161b22;
+    --gh-border-default: #30363d;
+    --gh-border-muted: #21262d;
+    --gh-text-primary: #f0f6fc;
+    --gh-text-secondary: #8b949e;
+    --gh-text-tertiary: #6e7681;
+    --gh-accent-emphasis: #2f81f7;
+    --gh-accent-subtle: #0d2b5e;
+    --gh-success-emphasis: #3fb950;
+    --gh-danger-emphasis: #f85149;
+    --gh-warning-emphasis: #d29922;
+    --gh-neutral-emphasis: #8b949e;
+    --gh-neutral-subtle: #484f58;
+    --gh-shadow-small: 0 1px 3px rgba(1, 4, 9, 0.12);
+    --gh-shadow-medium: 0 3px 6px rgba(1, 4, 9, 0.18);
+    --gh-shadow-large: 0 8px 24px rgba(1, 4, 9, 0.25);
   }
 }
 
+@theme inline {
+  --color-gh-canvas: var(--gh-bg-canvas);
+  --color-gh-canvas-inset: var(--gh-bg-canvas-inset);
+  --color-gh-canvas-subtle: var(--gh-bg-canvas-subtle);
+  --color-gh-border: var(--gh-border-default);
+  --color-gh-border-muted: var(--gh-border-muted);
+  --color-gh-text: var(--gh-text-primary);
+  --color-gh-text-secondary: var(--gh-text-secondary);
+  --color-gh-text-tertiary: var(--gh-text-tertiary);
+  --color-gh-accent: var(--gh-accent-emphasis);
+  --color-gh-accent-subtle: var(--gh-accent-subtle);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--gh-bg-canvas);
+  color: var(--gh-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  font-size: var(--gh-font-size-normal);
+  line-height: 1.5;
+}
+
+/* GitHub-style button styles */
+.gh-btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors;
+  @apply border border-gh-border bg-gh-canvas-subtle text-gh-text;
+  @apply hover:bg-gh-canvas-inset hover:border-gh-border-muted;
+  @apply focus:outline-none focus:ring-2 focus:ring-gh-accent focus:ring-offset-2;
+}
+
+.gh-btn-primary {
+  @apply bg-gh-accent text-white border-gh-accent;
+  @apply hover:bg-blue-600 hover:border-blue-600;
+}
+
+.gh-btn-sm {
+  @apply px-2 py-1 text-xs;
+}
+
+/* GitHub-style input styles */
+.gh-input {
+  @apply w-full px-3 py-2 rounded-md border border-gh-border;
+  @apply bg-gh-canvas text-gh-text placeholder-gh-text-tertiary;
+  @apply focus:outline-none focus:ring-2 focus:ring-gh-accent focus:border-gh-accent;
+  @apply transition-colors;
+}
+
+/* GitHub-style card styles */
+.gh-card {
+  @apply bg-gh-canvas border border-gh-border rounded-md;
+  box-shadow: var(--gh-shadow-small);
+}
+
+.gh-card-header {
+  @apply px-4 py-3 border-b border-gh-border bg-gh-canvas-subtle;
+  @apply rounded-t-md;
+}
+
+.gh-card-body {
+  @apply p-4;
+}
+
+/* File tree styles */
+.file-tree-item {
+  @apply flex items-center gap-2 px-2 py-1 rounded-md transition-colors cursor-pointer;
+  @apply hover:bg-gh-canvas-subtle;
+}
+
+.file-tree-item.selected {
+  @apply bg-gh-accent-subtle text-gh-accent font-medium;
+}
+
+.file-tree-item .expand-button {
+  @apply w-4 h-4 flex items-center justify-center rounded-sm;
+  @apply hover:bg-gh-canvas-inset text-gh-text-secondary;
+}
+
+/* Language badge styles */
+.language-badge {
+  @apply inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full;
+  @apply border bg-gh-canvas-subtle text-gh-text-secondary;
+}
+
+/* Chat styles */
+.chat-container {
+  @apply fixed bottom-0 left-0 right-0 z-50;
+  @apply bg-gh-canvas border-t border-gh-border;
+  box-shadow: var(--gh-shadow-large);
+}
+
+.chat-input {
+  @apply w-full px-4 py-3 bg-transparent text-gh-text placeholder-gh-text-tertiary;
+  @apply focus:outline-none resize-none;
+}
+
+.chat-message {
+  @apply p-4 border-b border-gh-border;
+}
+
+.chat-message.user {
+  @apply bg-gh-canvas-subtle;
+}
+
+.chat-message.assistant {
+  @apply bg-gh-canvas;
+}
+
+/* Code highlighting */
+.code-block {
+  @apply bg-gh-canvas-inset border border-gh-border rounded-md p-4;
+  @apply font-mono text-sm overflow-x-auto;
 }
 
 /* Line clamp utilities */
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+}
+
 .line-clamp-2 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -33,7 +196,14 @@ body {
   overflow: hidden;
 }
 
-/* Tree line styling */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+/* Tree connection lines */
 .tree-connection {
   position: relative;
 }
@@ -41,15 +211,57 @@ body {
 .tree-connection::before {
   content: '';
   position: absolute;
-  left: -1px;
+  left: 8px;
   top: 0;
-  bottom: 0;
+  bottom: 50%;
   width: 1px;
-  background: var(--tw-border-opacity, 1) rgba(229, 231, 235, var(--tw-border-opacity));
+  background: var(--gh-border-muted);
 }
 
-@media (prefers-color-scheme: dark) {
-  .tree-connection::before {
-    background: var(--tw-border-opacity, 1) rgba(75, 85, 99, var(--tw-border-opacity));
-  }
+.tree-connection::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: 8px;
+  height: 1px;
+  background: var(--gh-border-muted);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gh-bg-canvas);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gh-neutral-subtle);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gh-neutral-emphasis);
+}
+
+/* Animation utilities */
+.fade-in {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }

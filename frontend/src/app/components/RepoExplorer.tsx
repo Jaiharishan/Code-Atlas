@@ -4,6 +4,7 @@ import { useState } from "react";
 import TreeNode from "./TreeNode";
 import SearchBar from "./SearchBar";
 import DependencyGraph from "./DependencyGraph";
+import BottomChat from "./BottomChat";
 
 interface RepoTree {
   path: string;
@@ -31,11 +32,8 @@ export default function RepoExplorer({ tree, jobId, onReset }: RepoExplorerProps
   const [qaAnswer, setQaAnswer] = useState<string | null>(null);
   const [qaQuestion, setQaQuestion] = useState<string>("");
 
-  const handleAskQuestion = async (question: string) => {
+  const handleAskQuestion = async (question: string): Promise<string> => {
     try {
-      setQaQuestion(question);
-      setQaAnswer(null);
-      
       const response = await fetch(`http://localhost:8000/repos/${jobId}/search?q=${encodeURIComponent(question)}`);
       
       if (!response.ok) {
@@ -43,10 +41,10 @@ export default function RepoExplorer({ tree, jobId, onReset }: RepoExplorerProps
       }
       
       const result = await response.json();
-      setQaAnswer(result.answer || "I couldn't find a specific answer to that question.");
+      return result.answer || "I couldn't find a specific answer to that question.";
     } catch (error) {
       console.error("Failed to get answer:", error);
-      setQaAnswer("Sorry, I encountered an error while trying to answer your question.");
+      throw new Error("Sorry, I encountered an error while trying to answer your question.");
     }
   };
 
@@ -73,74 +71,83 @@ export default function RepoExplorer({ tree, jobId, onReset }: RepoExplorerProps
   };
 
   return (
-    <div className="space-y-4">
+    <div className="pb-20"> {/* Add padding for bottom chat */}
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">Repository Analysis</h2>
-          <p className="text-gray-600 dark:text-gray-400">{tree.path}</p>
-        </div>
-        <div className="flex space-x-3">
-          <button
-            onClick={downloadJSON}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-          >
-            Download JSON
-          </button>
-          <button
-            onClick={onReset}
-            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
-          >
-            Analyze New Repository
-          </button>
+      <div className="gh-card mb-6">
+        <div className="gh-card-header">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">📁</span>
+              <div>
+                <h2 className="text-lg font-semibold text-gh-text">Repository Analysis</h2>
+                <p className="text-sm text-gh-text-secondary font-mono">{tree.name}</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={downloadJSON}
+                className="gh-btn gh-btn-sm text-gh-success-emphasis border-gh-success-emphasis hover:bg-green-50"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Export JSON
+              </button>
+              <button
+                onClick={onReset}
+                className="gh-btn gh-btn-sm"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                New Analysis
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Search */}
-      <SearchBar 
-        searchQuery={searchQuery} 
-        onSearchChange={setSearchQuery}
-        onAskQuestion={handleAskQuestion}
-      />
-      
-      {/* Q&A Answer */}
-      {qaAnswer && (
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-          <h3 className="text-blue-800 dark:text-blue-200 font-medium mb-2">
-            🤖 AI Answer: "{qaQuestion}"
-          </h3>
-          <p className="text-blue-700 dark:text-blue-300">{qaAnswer}</p>
-          <button
-            onClick={() => {setQaAnswer(null); setQaQuestion("");}}
-            className="mt-2 text-sm text-blue-600 dark:text-blue-400 hover:underline"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
+      <div className="mb-6">
+        <SearchBar 
+          searchQuery={searchQuery} 
+          onSearchChange={setSearchQuery}
+        />
+      </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 dark:border-gray-800">
-        <nav className="-mb-px flex space-x-8">
+      <div className="border-b border-gh-border mb-6">
+        <nav className="flex space-x-6">
           <button
             onClick={() => setActiveTab('tree')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+            className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
               activeTab === 'tree'
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                ? 'border-gh-accent text-gh-accent'
+                : 'border-transparent text-gh-text-secondary hover:text-gh-text hover:border-gh-border-muted'
             }`}
           >
-            📁 Repository Tree
+            <span className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5a2 2 0 012-2h4a2 2 0 012 2v4H8V5z" />
+              </svg>
+              Files
+            </span>
           </button>
           <button
             onClick={() => setActiveTab('graph')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+            className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
               activeTab === 'graph'
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                ? 'border-gh-accent text-gh-accent'
+                : 'border-transparent text-gh-text-secondary hover:text-gh-text hover:border-gh-border-muted'
             }`}
           >
-            🕸️ Dependency Graph
+            <span className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9" />
+              </svg>
+              Dependencies
+            </span>
           </button>
         </nav>
       </div>
@@ -149,10 +156,10 @@ export default function RepoExplorer({ tree, jobId, onReset }: RepoExplorerProps
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Tree/Graph View */}
         <div className="lg:col-span-2">
-          <div className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 rounded-lg">
-            <div className="p-4">
-              {activeTab === 'tree' ? (
-                <div className="max-h-[600px] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-2">
+          <div className="gh-card">
+            {activeTab === 'tree' ? (
+              <div className="gh-card-body">
+                <div className="max-h-[600px] overflow-y-auto">
                   <TreeNode
                     node={tree}
                     level={0}
@@ -163,23 +170,27 @@ export default function RepoExplorer({ tree, jobId, onReset }: RepoExplorerProps
                     searchQuery={searchQuery}
                   />
                 </div>
-              ) : (
+              </div>
+            ) : (
+              <div className="gh-card-body">
                 <DependencyGraph jobId={jobId} />
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Details Panel */}
         <div className="lg:col-span-1">
-          <div className="bg-white dark:bg-gray-900 shadow-sm border border-gray-200 dark:border-gray-800 rounded-lg sticky top-4">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-              <h3 className="text-lg font-semibold text-foreground flex items-center">
-                <span className="mr-2">📋</span>
-                Details
+          <div className="gh-card sticky top-4">
+            <div className="gh-card-header">
+              <h3 className="text-base font-semibold text-gh-text flex items-center">
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                File Details
               </h3>
             </div>
-            <div className="p-4 max-h-[500px] overflow-y-auto">
+            <div className="gh-card-body max-h-[500px] overflow-y-auto">
               {selectedNode ? (
                 <div className="space-y-4">
                   {/* Header */}
@@ -291,6 +302,9 @@ export default function RepoExplorer({ tree, jobId, onReset }: RepoExplorerProps
           </div>
         </div>
       </div>
+      
+      {/* Bottom Chat */}
+      <BottomChat jobId={jobId} onAskQuestion={handleAskQuestion} />
     </div>
   );
 }
