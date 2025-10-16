@@ -175,21 +175,21 @@ class RepositorySearch:
         return list(file_names)
     
     def _find_file_by_name(self, tree: Any, target_name: str) -> Optional[Dict[str, Any]]:
-        """Find a file by name in the tree."""
-        if hasattr(tree, 'name') and target_name.lower() in tree.name.lower():
+        """Find a file by name in the tree (supports dict or object nodes)."""
+        name = self._get(tree, 'name')
+        if isinstance(name, str) and target_name.lower() in name.lower():
             return {
-                'path': tree.path,
-                'name': tree.name,
-                'summary': getattr(tree, 'summary', None),
-                'language': getattr(tree, 'language', None)
+                'path': self._get(tree, 'path'),
+                'name': name,
+                'summary': self._get(tree, 'summary'),
+                'language': self._get(tree, 'language')
             }
-        
-        if hasattr(tree, 'children') and tree.children:
-            for child in tree.children:
-                result = self._find_file_by_name(child, target_name)
-                if result:
-                    return result
-        
+
+        children = self._children(tree)
+        for child in children:
+            result = self._find_file_by_name(child, target_name)
+            if result:
+                return result
         return None
     
     def _find_main_files(self, tree: Any) -> List[Dict[str, Any]]:
@@ -201,37 +201,40 @@ class RepositorySearch:
         return main_files
     
     def _find_files_by_patterns(self, tree: Any, patterns: List[str], results: List[Dict[str, Any]]) -> None:
-        """Recursively find files matching patterns."""
-        if hasattr(tree, 'type') and tree.type == 'file':
-            name_lower = tree.name.lower()
+        """Recursively find files matching patterns (supports dict or object nodes)."""
+        node_type = self._type_of(tree)
+        if node_type == 'file':
+            node_name = self._get(tree, 'name') or ''
+            name_lower = node_name.lower()
             for pattern in patterns:
                 if pattern in name_lower:
                     results.append({
-                        'path': tree.path,
-                        'name': tree.name,
-                        'summary': getattr(tree, 'summary', None),
-                        'language': getattr(tree, 'language', None)
+                        'path': self._get(tree, 'path'),
+                        'name': node_name,
+                        'summary': self._get(tree, 'summary'),
+                        'language': self._get(tree, 'language')
                     })
                     break
-        
-        if hasattr(tree, 'children') and tree.children:
-            for child in tree.children:
-                self._find_files_by_patterns(child, patterns, results)
+
+        for child in self._children(tree):
+            self._find_files_by_patterns(child, patterns, results)
     
     def _describe_structure(self, tree: Any) -> str:
         """Describe the repository structure."""
-        if not hasattr(tree, 'children') or not tree.children:
+        children = self._children(tree)
+        if not children:
             return "This appears to be a simple repository with minimal structure."
         
         dirs = []
         files = []
         
-        for child in tree.children:
-            if hasattr(child, 'type'):
-                if child.type == 'directory' or child.type == 'dir':
-                    dirs.append(child.name)
-                else:
-                    files.append(child.name)
+        for child in children:
+            child_type = self._type_of(child)
+            child_name = self._get(child, 'name')
+            if child_type in ('directory', 'dir'):
+                dirs.append(child_name)
+            else:
+                files.append(child_name)
         
         structure_parts = []
         if dirs:
@@ -248,18 +251,18 @@ class RepositorySearch:
         return sorted(list(languages))
     
     def _collect_languages_recursive(self, tree: Any, languages: set) -> None:
-        """Recursively collect all languages."""
-        if hasattr(tree, 'language') and tree.language:
-            languages.add(tree.language)
-        
-        if hasattr(tree, 'children') and tree.children:
-            for child in tree.children:
-                self._collect_languages_recursive(child, languages)
+        """Recursively collect all languages (supports dict or object nodes)."""
+        lang = self._get(tree, 'language')
+        if lang:
+            languages.add(lang)
+        for child in self._children(tree):
+            self._collect_languages_recursive(child, languages)
     
     def _get_repository_summary(self, tree: Any) -> str:
         """Get a general repository summary."""
-        if hasattr(tree, 'summary') and tree.summary:
-            return tree.summary
+        summary = self._get(tree, 'summary')
+        if summary:
+            return summary
         
         # Generate basic summary
         languages = self._get_languages(tree)
@@ -274,36 +277,42 @@ class RepositorySearch:
     def _count_files(self, tree: Any) -> int:
         """Count total files in the repository."""
         count = 0
-        if hasattr(tree, 'type') and tree.type == 'file':
+        if self._type_of(tree) == 'file':
             count = 1
-        
-        if hasattr(tree, 'children') and tree.children:
-            for child in tree.children:
-                count += self._count_files(child)
+        for child in self._children(tree):
+            count += self._count_files(child)
         
         return count
     
     def _search_tree_recursive(self, tree: Any, query: str, results: List[str], relevant_files: List[str]) -> None:
-        """Recursively search through the tree."""
+        """Recursively search through the tree (supports dict or object nodes)."""
+        name = (self._get(tree, 'name') or '').lower()
+        path = self._get(tree, 'path') or ''
+        summary = (self._get(tree, 'summary') or '').lower()
+        language = (self._get(tree, 'language') or '')
+
         # Check file/directory name
-        if hasattr(tree, 'name') and query in tree.name.lower():
-            results.append(f"File: {tree.name}")
-            relevant_files.append(tree.path)
-        
+        if name and query in name:
+            results.append(f"File: {name}")
+            if path:
+                relevant_files.append(path)
+
         # Check summary
-        if hasattr(tree, 'summary') and tree.summary and query in tree.summary.lower():
-            results.append(f"{tree.name}: {tree.summary[:100]}...")
-            relevant_files.append(tree.path)
-        
+        if summary and query in summary:
+            display_name = self._get(tree, 'name') or ''
+            results.append(f"{display_name}: {summary[:100]}...")
+            if path:
+                relevant_files.append(path)
+
         # Check language
-        if hasattr(tree, 'language') and tree.language and query in tree.language.lower():
-            results.append(f"{tree.name} ({tree.language})")
-            relevant_files.append(tree.path)
-        
-        # Recurse through children
-        if hasattr(tree, 'children') and tree.children:
-            for child in tree.children:
-                self._search_tree_recursive(child, query, results, relevant_files)
+        if language and query in language.lower():
+            display_name = self._get(tree, 'name') or ''
+            results.append(f"{display_name} ({language})")
+            if path:
+                relevant_files.append(path)
+
+        for child in self._children(tree):
+            self._search_tree_recursive(child, query, results, relevant_files)
     
     def _build_repo_context_from_tree(self, tree: Any) -> Dict[str, Any]:
         """Build repository context from the analyzed tree."""
@@ -325,15 +334,14 @@ class RepositorySearch:
         return file_contents
     
     def _collect_file_contents_recursive(self, tree: Any, file_contents: Dict[str, str]) -> None:
-        """Recursively collect file summaries as content."""
-        if hasattr(tree, 'type') and tree.type == 'file':
-            # Use summary as content since we don't store full file contents
-            if hasattr(tree, 'summary') and tree.summary:
-                file_contents[tree.path] = tree.summary
-        
-        if hasattr(tree, 'children') and tree.children:
-            for child in tree.children:
-                self._collect_file_contents_recursive(child, file_contents)
+        """Recursively collect file summaries as content (supports dict or object nodes)."""
+        if self._type_of(tree) == 'file':
+            summary = self._get(tree, 'summary')
+            path = self._get(tree, 'path')
+            if summary and path:
+                file_contents[path] = summary
+        for child in self._children(tree):
+            self._collect_file_contents_recursive(child, file_contents)
     
     def _get_directories(self, tree: Any) -> List[str]:
         """Get all directory names from the tree."""
@@ -342,10 +350,34 @@ class RepositorySearch:
         return directories
     
     def _collect_directories_recursive(self, tree: Any, directories: List[str]) -> None:
-        """Recursively collect directory names."""
-        if hasattr(tree, 'type') and (tree.type == 'directory' or tree.type == 'dir'):
-            directories.append(tree.name)
-        
-        if hasattr(tree, 'children') and tree.children:
-            for child in tree.children:
-                self._collect_directories_recursive(child, directories)
+        """Recursively collect directory names (supports dict or object nodes)."""
+        if self._type_of(tree) in ('directory', 'dir'):
+            name = self._get(tree, 'name')
+            if name:
+                directories.append(name)
+        for child in self._children(tree):
+            self._collect_directories_recursive(child, directories)
+
+    # ------------------------
+    # Helpers for node access
+    # ------------------------
+    def _get(self, node: Any, key: str):
+        """Safely get a field from dict or object node."""
+        if isinstance(node, dict):
+            return node.get(key)
+        return getattr(node, key, None)
+
+    def _children(self, node: Any) -> List[Any]:
+        """Get children array from dict or object node."""
+        if isinstance(node, dict):
+            children = node.get('children')
+        else:
+            children = getattr(node, 'children', None)
+        return children or []
+
+    def _type_of(self, node: Any) -> Optional[str]:
+        """Get normalized node type (file/directory)."""
+        t = self._get(node, 'type')
+        if isinstance(t, str):
+            return t
+        return None

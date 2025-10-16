@@ -23,6 +23,10 @@ export default function BottomChat({ jobId, onAskQuestion }: BottomChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [chatHeight, setChatHeight] = useState<number>(420);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const dragLastYRef = useRef<number | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -31,6 +35,53 @@ export default function BottomChat({ jobId, onAskQuestion }: BottomChatProps) {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Auto-size the textarea based on content
+  useEffect(() => {
+    if (!textareaRef.current) return;
+    const el = textareaRef.current;
+    el.style.height = "0px";
+    const next = Math.min(el.scrollHeight, 160); // cap at ~10 lines
+    el.style.height = next + "px";
+  }, [inputValue]);
+
+  // Drag to resize (Y-axis)
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (dragLastYRef.current === null) {
+        dragLastYRef.current = e.clientY;
+        return;
+      }
+      const deltaY = e.clientY - dragLastYRef.current;
+      dragLastYRef.current = e.clientY;
+      // Handle at the top edge: moving mouse down should decrease height
+      setChatHeight((prev) => {
+        const next = prev - deltaY;
+        return Math.min(Math.max(next, 240), 800);
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      dragLastYRef.current = null;
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "ns-resize";
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+  }, [isDragging]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,21 +155,60 @@ export default function BottomChat({ jobId, onAskQuestion }: BottomChatProps) {
   }
 
   return (
-    <div className="chat-container" style={{ height: '400px' }}>
+    <div
+      className={
+        isFullscreen
+          ? "chat-container fixed inset-0 z-50 bg-gh-canvas"
+          : "chat-container"
+      }
+      style={{ height: isFullscreen ? "100vh" : chatHeight + "px" }}
+    >
       <div className="flex flex-col h-full">
+        {/* Resize handle (only when expanded and not fullscreen) */}
+        {!isFullscreen && (
+          <div
+            className="h-2 w-full cursor-ns-resize border-b border-gh-border bg-gh-canvas-subtle flex items-center justify-center"
+            onMouseDown={() => setIsDragging(true)}
+            title="Drag to resize"
+          >
+            <div className="h-1 w-12 rounded bg-gh-border" />
+          </div>
+        )}
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-gh-border bg-gh-canvas-subtle">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-gh-text">💬 Ask about your repository</span>
           </div>
-          <button
-            onClick={() => setIsExpanded(false)}
-            className="text-gh-text-secondary hover:text-gh-text transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsFullscreen((v) => !v)}
+              className="text-gh-text-secondary hover:text-gh-text transition-colors"
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              title={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+            >
+              {isFullscreen ? (
+                // minimize icon
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h6M8 4v6M20 16h-6M16 20v-6" />
+                </svg>
+              ) : (
+                // maximize icon
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h6M8 4v6M20 16h-6M16 20v-6" transform="rotate(180 12 12)" />
+                </svg>
+              )}
+            </button>
+            <button
+              onClick={() => setIsExpanded(false)}
+              className="text-gh-text-secondary hover:text-gh-text transition-colors"
+              aria-label="Close chat"
+              title="Close"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Messages */}
@@ -219,26 +309,34 @@ export default function BottomChat({ jobId, onAskQuestion }: BottomChatProps) {
         {/* Input */}
         <div className="border-t border-gh-border bg-gh-canvas">
           <form onSubmit={handleSubmit} className="p-4">
-            <div className="flex gap-2">
+            <div className="flex items-end gap-2">
               <div className="flex-1">
-                <textarea
-                  ref={textareaRef}
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Ask about this repository..."
-                  disabled={isLoading || !jobId}
-                  rows={1}
-                  className="chat-input resize-none max-h-32"
-                  style={{ minHeight: '40px' }}
-                />
+                <div className="relative">
+                  <textarea
+                    ref={textareaRef}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={jobId ? "Ask about this repository..." : "Complete analysis to start asking questions"}
+                    disabled={isLoading || !jobId}
+                    rows={1}
+                    className="chat-input resize-none pr-10 max-h-40"
+                    style={{ minHeight: '40px' }}
+                  />
+                  {/* trailing adornment */}
+                  <div className="pointer-events-none absolute right-2 bottom-2 text-gh-text-tertiary">
+                    <span className="text-[10px] hidden sm:inline">Enter ↵</span>
+                  </div>
+                </div>
               </div>
               <button
                 type="submit"
                 disabled={!inputValue.trim() || isLoading || !jobId}
-                className="gh-btn gh-btn-primary px-3 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="gh-btn gh-btn-primary h-10 w-10 grid place-items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Send message"
+                title="Send"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
               </button>
