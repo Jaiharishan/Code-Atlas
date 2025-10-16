@@ -2,6 +2,7 @@ import os
 from typing import Optional, Dict, Any, List
 import hashlib
 from .llm_service import LLMService
+from .utils.redis_cache import get_summary as redis_get_summary, set_summary as redis_set_summary
 
 LANG_BY_EXT = {
     ".py": "python",
@@ -106,12 +107,13 @@ class EnhancedSummarizer:
             for f in files_data:
                 content = f.get('content', '') or ''
                 content_hash = hashlib.sha256(content.encode('utf-8', errors='ignore')).hexdigest()
-                cached = self._summary_cache.get(content_hash)
+                cached = self._summary_cache.get(content_hash) or redis_get_summary(content_hash)
                 if cached:
                     result[f['path']] = cached
                 else:
                     summary = naive_summary(f['path'], content)
                     self._summary_cache[content_hash] = summary
+                    redis_set_summary(content_hash, summary)
                     result[f['path']] = summary
             return result
 
@@ -122,7 +124,7 @@ class EnhancedSummarizer:
             for f in files_data:
                 content = f.get('content', '') or ''
                 content_hash = hashlib.sha256(content.encode('utf-8', errors='ignore')).hexdigest()
-                cached = self._summary_cache.get(content_hash)
+                cached = self._summary_cache.get(content_hash) or redis_get_summary(content_hash)
                 if cached:
                     result[f['path']] = cached
                 else:
@@ -159,6 +161,7 @@ class EnhancedSummarizer:
                         summary = batch_summaries.get(path) or naive_summary(path, f.get('content', ''))
                         result[path] = summary
                         self._summary_cache[content_hash] = summary
+                        redis_set_summary(content_hash, summary)
 
             # Fill any missing with fallback and cache them
             for f in files_data:
@@ -167,6 +170,7 @@ class EnhancedSummarizer:
                     content_hash = hashlib.sha256(content.encode('utf-8', errors='ignore')).hexdigest()
                     summary = naive_summary(f['path'], content)
                     self._summary_cache[content_hash] = summary
+                    redis_set_summary(content_hash, summary)
                     result[f['path']] = summary
 
             return result
@@ -180,6 +184,7 @@ class EnhancedSummarizer:
                 content_hash = hashlib.sha256(content.encode('utf-8', errors='ignore')).hexdigest()
                 summary = naive_summary(f['path'], content)
                 self._summary_cache[content_hash] = summary
+                redis_set_summary(content_hash, summary)
                 result[f['path']] = summary
             return result
     

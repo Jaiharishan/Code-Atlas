@@ -2,6 +2,7 @@ from fastapi import FastAPI, BackgroundTasks, HTTPException, File, UploadFile, W
 from fastapi.middleware.cors import CORSMiddleware
 from .schemas import AnalyzeRequest, JobStatusResponse, RepoTreeResponse, SearchResponse, GraphResponse, UploadResponse
 from .jobs import JobManager
+from .utils.redis_cache import set_tree as redis_set_tree, get_tree as redis_get_tree
 from .walker import analyze_repository
 from .github_fetcher import GitHubFetcher
 from .search import RepositorySearch
@@ -51,6 +52,10 @@ def get_job(job_id: str):
 def get_tree(job_id: str):
     tree = job_manager.get_repo_tree(job_id)
     if tree is None:
+        cached = redis_get_tree(job_id)
+        if cached is not None:
+            tree = cached
+    if tree is None:
         raise HTTPException(status_code=404, detail="tree not found or job incomplete")
     return RepoTreeResponse(job_id=job_id, tree=tree)
 
@@ -97,6 +102,13 @@ def analyze_github_repository(repo_url: str, job_id: str, job_manager: JobManage
         # Now analyze the downloaded repository
         job_manager.update_progress(job_id, 0.9, "analyzing", "Analyzing repository structure")
         analyze_repository(temp_path, job_id, job_manager)
+        # Persist tree to Redis if available
+        try:
+            tree = job_manager.get_repo_tree(job_id)
+            if tree:
+                redis_set_tree(job_id, tree)
+        except Exception:
+            pass
         
     except Exception as e:
         job_manager.update(job_id, state="failed", message=str(e))
