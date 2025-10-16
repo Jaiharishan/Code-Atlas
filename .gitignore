@@ -1,0 +1,68 @@
+# macOS
+.DS_Store
+Icon?
+
+# Node / Next.js
+node_modules/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+.next/
+.next/cache/
+out/
+dist/
+coverage/
+*.log
+.vercel/
+
+# Frontend build artifacts
+frontend/.next/
+frontend/out/
+frontend/dist/
+frontend/coverage/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+build/
+pip-wheel-metadata/
+pip-log.txt
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Environment variables and secrets
+.env
+.env.*
+backend/.env
+frontend/.env
+
+# Editor/IDE
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+
+# OS trash
+.Trash-*/
+
+
