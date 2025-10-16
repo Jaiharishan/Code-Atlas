@@ -1,6 +1,7 @@
 import os
 from typing import Dict, Any, List, Optional
 from .utils.ignore import should_skip_dir, is_binary_file
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from .summarizer import detect_language, naive_summary, get_enhanced_summarizer
 from .jobs import JobManager
 
@@ -64,12 +65,28 @@ def walk_dir_enhanced(root: str, enhanced_summarizer, manager: JobManager, job_i
     all_files = []
     file_nodes = {}  # Store file nodes temporarily
     
+    def read_file_data(path: str) -> Dict[str, Any]:
+        name = os.path.basename(path) or os.path.basename(os.path.dirname(path))
+        lang = detect_language(path)
+        size = os.path.getsize(path)
+        content = None
+        if size <= MAX_FILE_BYTES and not is_binary_file(path):
+            content = read_text_prefix(path, MAX_FILE_BYTES)
+        return {
+            "path": path,
+            "name": name,
+            "lang": lang,
+            "size": int(size),
+            "content": content or "",
+        }
+
     def collect_files(path: str) -> Node:
         name = os.path.basename(path) or os.path.basename(os.path.dirname(path))
         
         if os.path.isdir(path):
             children = []
-            for entry in sorted(os.listdir(path)):
+            entries = sorted(os.listdir(path))
+            for entry in entries:
                 child_path = os.path.join(path, entry)
                 if os.path.isdir(child_path) and should_skip_dir(entry):
                     continue
@@ -86,33 +103,26 @@ def walk_dir_enhanced(root: str, enhanced_summarizer, manager: JobManager, job_i
                 "children": children,
             }
         else:
-            # File processing - collect for batch
-            lang = detect_language(path)
-            size = os.path.getsize(path)
-            
-            content = None
-            if size <= MAX_FILE_BYTES and not is_binary_file(path):
-                content = read_text_prefix(path, MAX_FILE_BYTES)
-            
+            # File processing - collect for batch (IO parallelized later)
+            meta = read_file_data(path)
             file_data = {
-                "path": path,
-                "content": content or "",
-                "language": lang,
-                "size": size
+                "path": meta["path"],
+                "content": meta["content"],
+                "language": meta["lang"],
+                "size": meta["size"],
             }
             all_files.append(file_data)
-            
-            # Create node without summary (will be filled later)
+
             node = {
-                "path": path,
-                "name": name,
+                "path": meta["path"],
+                "name": meta["name"],
                 "type": "file",
-                "language": lang,
-                "size": int(size),
-                "summary": None,  # Will be filled by batch processing
+                "language": meta["lang"],
+                "size": meta["size"],
+                "summary": None,
                 "children": None,
             }
-            file_nodes[path] = node
+            file_nodes[meta["path"]] = node
             return node
     
     # Collect all files first
@@ -122,7 +132,8 @@ def walk_dir_enhanced(root: str, enhanced_summarizer, manager: JobManager, job_i
     if all_files:
         manager.update_progress(job_id, 0.6, "analyzing", f"Generating summaries for {len(all_files)} files")
         
-        # Use batch processing to minimize LLM calls
+        # Note: read_file_data already fetched content; in larger repos, consider parallel IO at collection stage
+        # Use batch processing to minimize LLM calls (now token-aware + cached)
         batch_summaries = enhanced_summarizer.batch_summarize_files(all_files)
         
         # Apply summaries to file nodes

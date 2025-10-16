@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Job {
   job_id: string;
@@ -32,83 +32,63 @@ export default function JobProgress({ job, onComplete, onError, onReset }: JobPr
   const [elapsedTime, setElapsedTime] = useState(0);
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    let pollCount = 0;
     let isActive = true;
+    const ws = new WebSocket(`ws://localhost:8000/ws/jobs/${job.job_id}`);
 
-    const getNextPollInterval = () => {
-      // Smart polling: start fast, then slow down
-      if (pollCount < 3) return 500;   // First 3 polls: 0.5s
-      if (pollCount < 10) return 1000;  // Next 7 polls: 1s
-      if (pollCount < 20) return 2000;  // Next 10 polls: 2s
-      return 5000;                      // After that: 5s
+    ws.onopen = () => {
+      // Connected
     };
 
-    const pollJob = async () => {
+    ws.onmessage = (event) => {
       if (!isActive) return;
-      
       try {
-        pollCount++;
-        console.log(`[JobProgress] Poll #${pollCount} for job ${job.job_id}`);
-        
-        const response = await fetch(`http://localhost:8000/jobs/${job.job_id}`);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const updatedJob: Job = await response.json();
-        
-        if (!isActive) return; // Check again after async operation
-        
-        setCurrentJob(updatedJob);
-        setElapsedTime(Date.now() - startTime);
-
-        if (updatedJob.state === "completed") {
-          console.log(`[JobProgress] Job completed, fetching tree`);
-          // Fetch the repository tree
-          const treeResponse = await fetch(`http://localhost:8000/repos/${job.job_id}/tree`);
-          
-          if (!treeResponse.ok) {
-            throw new Error(`Failed to fetch tree: ${treeResponse.status}`);
+        const data = JSON.parse(event.data);
+        if (data.type === "status") {
+          const updated: Job = {
+            job_id: data.job_id,
+            state: data.state,
+            progress: data.progress,
+            message: data.message,
+          };
+          setCurrentJob(updated);
+          setElapsedTime(Date.now() - startTime);
+        } else if (data.type === "completed") {
+          const updated: Job = {
+            job_id: data.job_id,
+            state: data.state,
+            progress: data.progress,
+            message: data.message,
+          };
+          setCurrentJob(updated);
+          if (data.tree) {
+            onComplete(data.tree);
+          } else {
+            // Fallback fetch tree if not included (shouldn't generally happen)
+            fetch(`http://localhost:8000/repos/${job.job_id}/tree`).then(r => r.json()).then(t => onComplete(t.tree)).catch(() => onError("Failed to fetch tree"));
           }
-
-          const treeData = await treeResponse.json();
-          if (isActive) {
-            onComplete(treeData.tree);
-          }
-          return; // Stop polling
-        } else if (updatedJob.state === "failed") {
-          console.log(`[JobProgress] Job failed: ${updatedJob.message}`);
-          if (isActive) {
-            onError(updatedJob.message || "Analysis failed");
-          }
-          return; // Stop polling
+          ws.close();
+        } else if (data.type === "failed") {
+          onError(data.message || "Analysis failed");
+          ws.close();
+        } else if (data.type === "error") {
+          onError(data.message || "Unknown error");
         }
-        
-        // Schedule next poll if job is still running
-        if (isActive && (updatedJob.state === "queued" || updatedJob.state === "running")) {
-          const nextInterval = getNextPollInterval();
-          console.log(`[JobProgress] Scheduling next poll in ${nextInterval}ms`);
-          timeoutId = setTimeout(pollJob, nextInterval);
-        }
-      } catch (error) {
-        console.error("Failed to poll job:", error);
-        if (isActive) {
-          onError("Failed to check job status");
-        }
+      } catch (e) {
+        // Ignore malformed messages
       }
     };
 
-    // Start the first poll immediately
-    pollJob();
+    ws.onerror = () => {
+      if (isActive) onError("Connection error");
+    };
+
+    ws.onclose = () => {
+      // Closed
+    };
 
     return () => {
-      console.log(`[JobProgress] Cleanup - stopping polling for job ${job.job_id}`);
       isActive = false;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
+      ws.close();
     };
   }, [job.job_id, onComplete, onError, startTime]);
 

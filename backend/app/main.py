@@ -1,4 +1,4 @@
-from fastapi import FastAPI, BackgroundTasks, HTTPException, File, UploadFile
+from fastapi import FastAPI, BackgroundTasks, HTTPException, File, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from .schemas import AnalyzeRequest, JobStatusResponse, RepoTreeResponse, SearchResponse, GraphResponse, UploadResponse
 from .jobs import JobManager
@@ -107,4 +107,39 @@ def analyze_github_repository(repo_url: str, job_id: str, job_manager: JobManage
                 shutil.rmtree(temp_path)
             except:
                 pass
+
+# --- Realtime updates via WebSocket ---
+@app.websocket("/ws/jobs/{job_id}")
+async def job_updates_ws(websocket: WebSocket, job_id: str):
+    await websocket.accept()
+    import asyncio
+    try:
+        last_payload = None
+        while True:
+            status = job_manager.get_status(job_id)
+            if not status:
+                await websocket.send_json({"type": "error", "message": "job not found"})
+                await asyncio.sleep(0.5)
+                continue
+
+            payload = {"type": "status", **status}
+            # Send only if changed to avoid chatty updates
+            if payload != last_payload:
+                await websocket.send_json(payload)
+                last_payload = payload
+
+            # On completion or failure, send terminal event and optionally the tree
+            if status["state"] in ("completed", "failed"):
+                terminal = {"type": status["state"], **status}
+                if status["state"] == "completed":
+                    tree = job_manager.get_repo_tree(job_id)
+                    if tree is not None:
+                        terminal["tree"] = tree
+                await websocket.send_json(terminal)
+                break
+
+            await asyncio.sleep(0.5)
+    except WebSocketDisconnect:
+        # Client disconnected; nothing to do
+        return
 

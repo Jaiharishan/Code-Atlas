@@ -1,5 +1,6 @@
 import os
 from typing import Optional, Dict, Any, List
+import hashlib
 from .llm_service import LLMService
 
 LANG_BY_EXT = {
@@ -59,6 +60,8 @@ class EnhancedSummarizer:
             self.llm_available = False
         
         self._repo_context = None  # Cache repository context
+        # In-memory cache: content_hash -> summary
+        self._summary_cache: Dict[str, str] = {}
     
     def set_repository_context(self, repo_path: str) -> None:
         """Set the repository context for intelligent summaries."""
@@ -94,26 +97,91 @@ class EnhancedSummarizer:
     
     def batch_summarize_files(self, files_data: List[Dict[str, str]]) -> Dict[str, str]:
         """Generate summaries for multiple files efficiently."""
+        if not files_data:
+            return {}
+
+        # If LLM unavailable or no repo context, use fallback + cache
         if not self.llm_available or not self._repo_context:
-            # Use fallback for all files
-            return {f['path']: naive_summary(f['path'], f.get('content', '')) for f in files_data}
-        
+            result: Dict[str, str] = {}
+            for f in files_data:
+                content = f.get('content', '') or ''
+                content_hash = hashlib.sha256(content.encode('utf-8', errors='ignore')).hexdigest()
+                cached = self._summary_cache.get(content_hash)
+                if cached:
+                    result[f['path']] = cached
+                else:
+                    summary = naive_summary(f['path'], content)
+                    self._summary_cache[content_hash] = summary
+                    result[f['path']] = summary
+            return result
+
         try:
-            # Use LLM batch processing to reduce HTTP requests
-            summaries = self.llm_service.generate_batch_summaries(files_data, self._repo_context)
-            
-            # Fill in any missing with naive summaries
-            for file_data in files_data:
-                file_path = file_data['path']
-                if file_path not in summaries:
-                    summaries[file_path] = naive_summary(file_path, file_data.get('content', ''))
-            
-            return summaries
-            
+            # Separate cached vs uncached by content hash
+            to_process: List[Dict[str, str]] = []
+            result: Dict[str, str] = {}
+            for f in files_data:
+                content = f.get('content', '') or ''
+                content_hash = hashlib.sha256(content.encode('utf-8', errors='ignore')).hexdigest()
+                cached = self._summary_cache.get(content_hash)
+                if cached:
+                    result[f['path']] = cached
+                else:
+                    g = dict(f)
+                    g['__hash'] = content_hash
+                    to_process.append(g)
+
+            if to_process:
+                # Token-aware batching using content length budget
+                batches: List[List[Dict[str, str]]] = []
+                current: List[Dict[str, str]] = []
+                budget = 8000  # approx chars per batch
+                used = 0
+                for f in to_process:
+                    c = f.get('content', '') or ''
+                    l = len(c)
+                    if used + l > budget and current:
+                        batches.append(current)
+                        current = []
+                        used = 0
+                    current.append(f)
+                    used += l
+                if current:
+                    batches.append(current)
+
+                for batch in batches:
+                    # Strip helper field before sending
+                    clean_batch = [{k: v for k, v in f.items() if k != '__hash'} for f in batch]
+                    batch_summaries = self.llm_service.generate_batch_summaries(clean_batch, self._repo_context)
+                    # Store and cache
+                    for f in batch:
+                        path = f['path']
+                        content_hash = f['__hash']
+                        summary = batch_summaries.get(path) or naive_summary(path, f.get('content', ''))
+                        result[path] = summary
+                        self._summary_cache[content_hash] = summary
+
+            # Fill any missing with fallback and cache them
+            for f in files_data:
+                if f['path'] not in result:
+                    content = f.get('content', '') or ''
+                    content_hash = hashlib.sha256(content.encode('utf-8', errors='ignore')).hexdigest()
+                    summary = naive_summary(f['path'], content)
+                    self._summary_cache[content_hash] = summary
+                    result[f['path']] = summary
+
+            return result
+
         except Exception as e:
             print(f"Warning: Batch LLM summary failed: {e}")
-            # Fallback to naive summaries for all files
-            return {f['path']: naive_summary(f['path'], f.get('content', '')) for f in files_data}
+            # Fallback to naive summaries for all files (and cache)
+            result: Dict[str, str] = {}
+            for f in files_data:
+                content = f.get('content', '') or ''
+                content_hash = hashlib.sha256(content.encode('utf-8', errors='ignore')).hexdigest()
+                summary = naive_summary(f['path'], content)
+                self._summary_cache[content_hash] = summary
+                result[f['path']] = summary
+            return result
     
     def summarize_directory(self, dir_path: str, child_summaries: List[str]) -> str:
         """Generate summary for a directory based on its children."""
