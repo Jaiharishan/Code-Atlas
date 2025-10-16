@@ -3,6 +3,7 @@ from typing import Dict, Any, List, Optional
 from .utils.ignore import should_skip_dir, is_binary_file
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .summarizer import detect_language, naive_summary, get_enhanced_summarizer
+from .utils.vector_store import index_summaries
 from .jobs import JobManager
 
 MAX_FILE_BYTES = 200_000
@@ -162,6 +163,20 @@ def walk_dir_enhanced(root: str, enhanced_summarizer, manager: JobManager, job_i
     
     manager.update_progress(job_id, 0.8, "finalizing", "Generating directory summaries")
     finalize_directory_summaries(tree)
+
+    # Index file summaries in vector store
+    try:
+        items = []
+        def collect_files_for_index(n: Node):
+            if n['type'] == 'file' and n.get('summary'):
+                items.append({"path": n['path'], "summary": n['summary']})
+            for c in (n.get('children') or []):
+                collect_files_for_index(c)
+        collect_files_for_index(tree)
+        if items:
+            index_summaries(job_id, items)
+    except Exception:
+        pass
     
     return tree
 

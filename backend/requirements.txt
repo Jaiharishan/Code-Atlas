@@ -5,3 +5,5 @@ python-multipart==0.0.9
 requests==2.31.0
 python-dotenv==1.0.1
 redis==5.0.7
+chromadb==0.5.5
+sentence-transformers==3.1.1

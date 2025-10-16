@@ -2,6 +2,7 @@ import re
 from typing import List, Optional, Dict, Any
 from .jobs import JobManager
 from .llm_service import LLMService
+from .utils.vector_store import query as vs_query
 
 
 class RepositorySearch:
@@ -42,7 +43,14 @@ class RepositorySearch:
             try:
                 # Build repository context from tree
                 repo_context = self._build_repo_context_from_tree(job.tree)
-                file_contents = self._extract_file_contents_from_tree(job.tree)
+                
+                # Retrieve top-k relevant summaries from vector store (if any)
+                retrieved = vs_query(job_id, query, top_k=8)
+                file_contents = {r['path']: r['summary'] for r in retrieved}
+                
+                # Fallback to summaries from tree if retrieval is empty
+                if not file_contents:
+                    file_contents = self._extract_file_contents_from_tree(job.tree)
                 
                 # Use LLM for intelligent answer
                 result = self.llm_service.answer_repository_question(query, repo_context, file_contents)
